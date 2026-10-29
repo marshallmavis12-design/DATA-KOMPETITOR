@@ -81,7 +81,7 @@ td.n,th.n{text-align:right}
   </div>
   <div id="brands"></div>
   <button class="go" id="send">Kirim data</button>
-  <p class="hint">Setiap SA hanya bisa mengirim 1 kali per hari. SO diisi akumulasi bulan berjalan.</p>
+  <p class="hint">Setiap SA hanya bisa mengirim 1 kali per hari. SO diisi akumulasi bulan berjalan. Data realme terisi otomatis dari Excel pencapaian, tidak perlu diisi.</p>
   <div class="msg" id="msg" role="status"></div>
 </section>
 
@@ -132,7 +132,7 @@ function say(id, t, err){ const e = $(id); e.textContent = t; e.style.color = er
 /* ---------- FORM ---------- */
 $("arm").innerHTML = '<option value="">Pilih ARM / FT</option>' + ARMS.map(a => `<option>${a}</option>`).join("");
 $("month").value = new Date().toISOString().slice(0, 7);
-$("brands").innerHTML = BR.map(([n, c], i) => `
+$("brands").innerHTML = BR.slice(1).map(([n, c], i) => `
  <div class="brand"><h3><span class="dot" style="background:${c}"></span>${i + 1}. ${n}</h3>
  <div class="g2">
   <div><label for="${key(n)}_sa">Jumlah Promotor</label><select id="${key(n)}_sa"><option value="">Pilih</option>${[1,2,3,4,5].map(x => `<option>${x}</option>`).join("")}</select></div>
@@ -162,7 +162,7 @@ $("send").onclick = async () => {
   const code = $("code").value;
   try { if(localStorage.getItem(dkey(code))) return say("msg", "SA ini sudah mengirim data hari ini. Silakan kirim lagi besok.", 1); } catch(e){}
   const d = {month: $("month").value, arm: $("arm").value, sa: $("sa").selectedOptions[0].text, code, store_code: $("scode").value, store: $("store").value};
-  for(const [n] of BR){
+  for(const [n] of BR.slice(1)){
     const p = $(key(n) + "_sa").value, s = $(key(n) + "_so").value;
     if(p === "" || s === "") return say("msg", "Isi Jumlah Promotor dan Jumlah SO untuk " + n + ".", 1);
     d[key(n) + "_sa"] = +p; d[key(n) + "_so"] = +s;
@@ -176,7 +176,7 @@ $("send").onclick = async () => {
     else {
       try{localStorage.setItem(dkey(code), 1)}catch(e){}
       say("msg", "Data terkirim. Terima kasih!");
-      $("sa").value = ""; info(); BR.forEach(([n]) => { $(key(n) + "_sa").value = ""; $(key(n) + "_so").value = ""; });
+      $("sa").value = ""; info(); BR.slice(1).forEach(([n]) => { $(key(n) + "_sa").value = ""; $(key(n) + "_so").value = ""; });
     }
   }catch(e){ say("msg", "Gagal mengirim. Cek koneksi, lalu coba lagi.", 1); }
   $("send").disabled = false;
@@ -216,16 +216,18 @@ function render(){
   all.forEach(r => { const k = r.code + "|" + r.month; if(!mp[k] || new Date(r.timestamp) > new Date(mp[k].timestamp)) mp[k] = r; });
   const rows = Object.values(mp);
   const xlSO = RSf.reduce((s, r) => s + num(r.so), 0), hasX = xlSO > 0;
+  const XS = {}; RS.forEach(r => XS[String(r.code)] = num(r.so));
 
   const st = BR.map(([n, c]) => {
-    const k = key(n), pm = rows.reduce((s, r) => s + num(r[k + "_sa"]), 0);
-    const so = (k === "realme" && hasX) ? xlSO : rows.reduce((s, r) => s + num(r[k + "_so"]), 0);
+    const k = key(n), rl = k === "realme";
+    const pm = rl ? RSf.length : rows.reduce((s, r) => s + num(r[k + "_sa"]), 0);
+    const so = rl ? xlSO : rows.reduce((s, r) => s + num(r[k + "_so"]), 0);
     return {n, c, pm, so, pd: pm ? so / pm : 0};
   });
   const rm = st[0];
   $("kpis").innerHTML = [
     ["Laporan masuk", all.length, "#111"], ["SA realme terdaftar", RSf.length, "#FFC915"],
-    ["SO realme" + (hasX ? " (Excel)" : ""), fmt(rm.so), "#FFC915"], ["Productivity realme", fmt(rm.pd, 1), "#FFC915"]
+    ["SO realme (Excel)", fmt(rm.so), "#FFC915"], ["Productivity realme", fmt(rm.pd, 1), "#FFC915"]
   ].map(([t, v, c]) => `<div class="kpi" style="border-color:${c}"><small>${t}</small><b>${v}</b></div>`).join("");
 
   const bar = (k, d) => { const mx = Math.max(...st.map(s => s[k]), 1);
@@ -233,14 +235,14 @@ function render(){
   $("b1").innerHTML = bar("so", 0); $("b2").innerHTML = bar("pd", 1);
 
   $("tbb").innerHTML = "<tr><th>Brand</th><th class='n'>Jumlah promotor</th><th class='n'>Jumlah SO</th><th class='n'>Productivity</th><th class='n'>SO vs realme</th></tr>" +
-    st.map(s => `<tr><td><b>${s.n}</b>${s.n === "realme" && hasX ? " (SO dari Excel)" : ""}</td><td class="n">${fmt(s.pm)}</td><td class="n">${fmt(s.so)}</td><td class="n">${fmt(s.pd, 1)}</td><td class="n">${rm.so ? fmt(s.so / rm.so * 100, 0) + "%" : "-"}</td></tr>`).join("");
+    st.map(s => `<tr><td><b>${s.n}</b>${s.n === "realme" ? " (dari Excel)" : ""}</td><td class="n">${fmt(s.pm)}</td><td class="n">${fmt(s.so)}</td><td class="n">${fmt(s.pd, 1)}</td><td class="n">${rm.so ? fmt(s.so / rm.so * 100, 0) + "%" : "-"}</td></tr>`).join("");
 
   // per toko
   const sm = {};
   const g = (c, n) => { const k = c || n || "-"; return sm[k] || (sm[k] = {name: n || c || "-", rm: 0, b: {}}); };
   RSf.forEach(r => { g(String(r.store_code), r.store).rm += num(r.so); });
   rows.forEach(r => { const o = g(String(r.store_code), r.store);
-    BR.forEach(([n]) => { const k = key(n); if(k === "realme"){ if(!hasX) o.rm += num(r.realme_so); } else o.b[k] = (o.b[k] || 0) + num(r[k + "_so"]); }); });
+    BR.forEach(([n]) => { const k = key(n); if(k !== "realme") o.b[k] = (o.b[k] || 0) + num(r[k + "_so"]); }); });
   const comp = BR.slice(1);
   $("tbs").innerHTML = "<tr><th>Toko</th><th class='n'>realme</th>" + comp.map(([n]) => `<th class='n'>${n}</th>`).join("") + "<th class='n'>Share realme</th></tr>" +
     Object.values(sm).sort((a, b) => b.rm - a.rm).map(o => {
@@ -250,12 +252,12 @@ function render(){
 
   const cell = (r, n) => `${r[key(n) + "_sa"]} / ${r[key(n) + "_so"]}`;
   const head = ["Tanggal", "Bulan", "ARM/FT", "SA", "Kode", "Store Code", "Toko"];
-  $("tb").innerHTML = "<tr>" + head.concat(BR.map(([n]) => n + " (Prom/SO)")).map(x => `<th>${x}</th>`).join("") + "</tr>" +
-    all.map(r => "<tr>" + [String(r.day).slice(0, 10), String(r.month).slice(0, 7), r.arm, r.sa, r.code, r.store_code, r.store, ...BR.map(([n]) => cell(r, n))]
+  $("tb").innerHTML = "<tr>" + head.concat(["realme SO (Excel)"], BR.slice(1).map(([n]) => n + " (Prom/SO)")).map(x => `<th>${x}</th>`).join("") + "</tr>" +
+    all.map(r => "<tr>" + [String(r.day).slice(0, 10), String(r.month).slice(0, 7), r.arm, r.sa, r.code, r.store_code, r.store, fmt(XS[String(r.code)] || 0), ...BR.slice(1).map(([n]) => cell(r, n))]
       .map(x => `<td>${esc(x)}</td>`).join("") + "</tr>").join("");
   $("csv").onclick = () => {
-    const h = [...head, ...BR.flatMap(([n]) => [n + " Promotor", n + " SO"])];
-    const t = [h, ...all.map(r => [String(r.day).slice(0, 10), String(r.month).slice(0, 7), r.arm, r.sa, r.code, r.store_code, r.store, ...BR.flatMap(([n]) => [r[key(n) + "_sa"], r[key(n) + "_so"]])])]
+    const h = [...head, "realme SO (Excel)", ...BR.slice(1).flatMap(([n]) => [n + " Promotor", n + " SO"])];
+    const t = [h, ...all.map(r => [String(r.day).slice(0, 10), String(r.month).slice(0, 7), r.arm, r.sa, r.code, r.store_code, r.store, XS[String(r.code)] || 0, ...BR.slice(1).flatMap(([n]) => [r[key(n) + "_sa"], r[key(n) + "_so"]])])]
       .map(a => a.map(x => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([t], {type: "text/csv"}));
     a.download = "rekap-kompetitor.csv"; a.click();
